@@ -1,6 +1,6 @@
 [![pipeline status](https://gitlab.com/libssh/libssh-mirror/badges/master/pipeline.svg)](https://gitlab.com/libssh/libssh-mirror/commits/master)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/libssh.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:libssh)
-[![coverage report](https://gitlab.com/libssh/libssh-mirror/badges/master/coverage.svg)](https://libssh.gitlab.io/libssh-mirror/)
+[![coverage report](https://gitlab.com/AshleyZ720/libssh-mirror/badges/add-coverage-pages/coverage.svg)](https://gitlab.com/AshleyZ720/libssh-mirror/-/jobs/artifacts/add-coverage-pages/file/obj/coverage_html/index.html?job=fedora/coverage)
 
 ```
   _   _   _                          _
