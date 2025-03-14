@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.12.0)
+cmake_minimum_required(VERSION 3.3.0)
+cmake_policy(SET CMP0048 NEW)
 
 # Specify search path for CMake modules to be loaded by include()
 # and find_package()
@@ -9,7 +10,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules")
 include(DefineCMakeDefaults)
 include(DefineCompilerFlags)
 
-project(libssh VERSION 0.11.00 LANGUAGES C)
+project(libssh VERSION 0.10.90 LANGUAGES C)
 
 # global needed variable
 set(APPLICATION_NAME ${PROJECT_NAME})
@@ -21,7 +22,7 @@ set(APPLICATION_NAME ${PROJECT_NAME})
 #     Increment AGE. Set REVISION to 0
 #   If the source code was changed, but there were no interface changes:
 #     Increment REVISION.
-set(LIBRARY_VERSION "4.10.0")
+set(LIBRARY_VERSION "4.9.0")
 set(LIBRARY_SOVERSION "4")
 
 # where to look first for cmake modules, before ${CMAKE_ROOT}/Modules/ is checked
@@ -48,12 +49,32 @@ endif (WITH_ZLIB)
 
 if (WITH_GCRYPT)
   find_package(GCrypt 1.5.0 REQUIRED)
-  message(WARNING "libgcrypt cryptographic backend is deprecated and will be removed in future releases.")
+  if (NOT GCRYPT_FOUND)
+    message(FATAL_ERROR "Could not find GCrypt")
+  endif (NOT GCRYPT_FOUND)
 elseif(WITH_MBEDTLS)
     find_package(MbedTLS REQUIRED)
-else()
-  find_package(OpenSSL 1.1.1 REQUIRED)
-endif()
+    if (NOT MBEDTLS_FOUND)
+      message(FATAL_ERROR "Could not find mbedTLS")
+    endif (NOT MBEDTLS_FOUND)
+else (WITH_GCRYPT)
+  find_package(OpenSSL 1.0.1)
+  if (OPENSSL_FOUND)
+    # On CMake < 3.16, OPENSSL_CRYPTO_LIBRARIES is usually a synonym for OPENSSL_CRYPTO_LIBRARY, but is not defined
+    # when building on Windows outside of Cygwin. We provide the synonym here, if FindOpenSSL didn't define it already.
+    if (NOT DEFINED OPENSSL_CRYPTO_LIBRARIES)
+      set(OPENSSL_CRYPTO_LIBRARIES ${OPENSSL_CRYPTO_LIBRARY})
+    endif (NOT DEFINED OPENSSL_CRYPTO_LIBRARIES)
+  else (OPENSSL_FOUND)
+    find_package(GCrypt)
+    if (NOT GCRYPT_FOUND)
+      find_package(MbedTLS)
+      if (NOT MBEDTLS_FOUND)
+        message(FATAL_ERROR "Could not find OpenSSL, GCrypt or mbedTLS")
+      endif (NOT MBEDTLS_FOUND)
+    endif (NOT GCRYPT_FOUND)
+  endif (OPENSSL_FOUND)
+endif(WITH_GCRYPT)
 
 if (UNIT_TESTING)
     find_package(CMocka REQUIRED)
@@ -68,12 +89,23 @@ if (WITH_GSSAPI)
     find_package(GSSAPI)
 endif (WITH_GSSAPI)
 
+if (WITH_PKCS11_URI)
+    find_package(softhsm)
+    if (NOT SOFTHSM_FOUND)
+        message(SEND_ERROR "Could not find softhsm module!")
+     endif (NOT SOFTHSM_FOUND)
+endif (WITH_PKCS11_URI)
+
 if (WITH_NACL)
     find_package(NaCl)
     if (NOT NACL_FOUND)
         set(WITH_NACL OFF)
     endif (NOT NACL_FOUND)
 endif (WITH_NACL)
+
+if (BSD OR SOLARIS OR OSX OR CYGWIN)
+    find_package(Argp)
+endif (BSD OR SOLARIS OR OSX OR CYGWIN)
 
 # Disable symbol versioning in non UNIX platforms
 if (UNIX)
@@ -86,10 +118,6 @@ endif (UNIX)
 include(ConfigureChecks.cmake)
 configure_file(config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
-if (NOT HAVE_ARGP_PARSE)
-  find_package(Argp)
-endif (NOT HAVE_ARGP_PARSE)
-
 # check subdirectories
 add_subdirectory(doc)
 add_subdirectory(include)
@@ -97,7 +125,7 @@ add_subdirectory(src)
 
 # pkg-config file
 if (UNIX OR MINGW)
-configure_file(libssh.pc.cmake ${CMAKE_CURRENT_BINARY_DIR}/libssh.pc @ONLY)
+configure_file(libssh.pc.cmake ${CMAKE_CURRENT_BINARY_DIR}/libssh.pc)
 install(
   FILES
     ${CMAKE_CURRENT_BINARY_DIR}/libssh.pc
@@ -210,19 +238,14 @@ endif (WITH_COVERAGE)
 
 add_custom_target(dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source DEPENDS ${_SYMBOL_TARGET} VERBATIM)
 
-get_directory_property(hasParent PARENT_DIRECTORY)
-if(NOT(hasParent))
-  # Link compile database for clangd if we are the master project
-  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
-    "${CMAKE_BINARY_DIR}/compile_commands.json"
-    "${CMAKE_SOURCE_DIR}/compile_commands.json")
-endif()
+# Link compile database for clangd
+execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+                "${CMAKE_BINARY_DIR}/compile_commands.json"
+                "${CMAKE_SOURCE_DIR}/compile_commands.json")
 
 message(STATUS "********************************************")
 message(STATUS "********** ${PROJECT_NAME} build options : **********")
 
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Coverage: ${WITH_COVERAGE}")
 message(STATUS "zlib support: ${WITH_ZLIB}")
 message(STATUS "libgcrypt support: ${WITH_GCRYPT}")
 message(STATUS "libmbedTLS support: ${WITH_MBEDTLS}")
@@ -232,14 +255,13 @@ message(STATUS "Server support : ${WITH_SERVER}")
 message(STATUS "GSSAPI support : ${WITH_GSSAPI}")
 message(STATUS "GEX support : ${WITH_GEX}")
 message(STATUS "Support insecure none cipher and MAC : ${WITH_INSECURE_NONE}")
-message(STATUS "Support exec : ${WITH_EXEC}")
 message(STATUS "Pcap debugging support : ${WITH_PCAP}")
 message(STATUS "Build shared library: ${BUILD_SHARED_LIBS}")
 message(STATUS "Unit testing: ${UNIT_TESTING}")
 message(STATUS "Client code testing: ${CLIENT_TESTING}")
-message(STATUS "Blowfish cipher support: ${HAVE_BLOWFISH}")
+message(STATUS "Blowfish cipher support: ${WITH_BLOWFISH_CIPHER}")
 message(STATUS "PKCS #11 URI support: ${WITH_PKCS11_URI}")
-message(STATUS "With PKCS #11 provider support: ${WITH_PKCS11_PROVIDER}")
+message(STATUS "DSA support: ${WITH_DSA}")
 set(_SERVER_TESTING OFF)
 if (WITH_SERVER)
     set(_SERVER_TESTING ${SERVER_TESTING})
@@ -254,15 +276,9 @@ message(STATUS "Benchmarks: ${WITH_BENCHMARKS}")
 message(STATUS "Symbol versioning: ${WITH_SYMBOL_VERSIONING}")
 message(STATUS "Allow ABI break: ${WITH_ABI_BREAK}")
 message(STATUS "Release is final: ${WITH_FINAL}")
-if (WITH_HERMETIC_USR)
-    message(STATUS "User global client config: ${USR_GLOBAL_CLIENT_CONFIG}")
-endif ()
 message(STATUS "Global client config: ${GLOBAL_CLIENT_CONFIG}")
 if (WITH_SERVER)
-    if (WITH_HERMETIC_USR)
-        message(STATUS "User global bind config: ${USR_GLOBAL_BIND_CONFIG}")
-    endif ()
-    message(STATUS "Global bind config: ${GLOBAL_BIND_CONFIG}")
+message(STATUS "Global bind config: ${GLOBAL_BIND_CONFIG}")
 endif()
 message(STATUS "********************************************")
 
