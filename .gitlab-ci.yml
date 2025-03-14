@@ -247,7 +247,7 @@ pages:
     paths:
       - public
   only:
-    - master
+    - branches
   coverage: /^\s*lines:\s*\d+.\d+\%/
 
 fedora/openssl_3.x/x86_64:
